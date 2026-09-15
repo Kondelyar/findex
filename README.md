@@ -5,21 +5,15 @@ This is Lab 1: a lazy corpus intake (streaming, no full-corpus load into memory)
 
 ## Corpus
 
-arXiv abstracts, one JSON object per line (`.jsonl`). Each line has at least
-an `id` and an `abstract` field:
+The engine processes documents in `.jsonl` format (one JSON object per line). Each line has at least an `id` and an `abstract` field:
 
 ```json
 {"id": "2101.00001", "abstract": "We propose a new method for ..."}
 ```
 
-Source: the [Cornell arXiv dataset on Kaggle](https://www.kaggle.com/datasets/Cornell-University/arxiv)
-(`arxiv-metadata-oai-snapshot.json`, already one JSON object per line). Download it,
-rename/copy the file to `data/arxiv.jsonl` (or point `--root` at wherever you keep it).
-The file is not committed — `data/` is gitignored.
+Note: While the primary target structure is the Cornell arXiv dataset, the pipeline works with any valid .jsonl file. For the benchmarks below, a real text corpus (Alice's Adventures in Wonderland) was converted into 2595 JSONL documents and saved as data/arxiv.jsonl.
 
-While developing without the full dump, `scripts/make_sample_corpus.py` generates
-a small synthetic `.jsonl` corpus with the same shape, so the pipeline can be tested
-end to end:
+While developing without the full dump, scripts/make_sample_corpus.py generates a small synthetic .jsonl corpus with the same shape, so the pipeline can be tested end to end:
 
 ```bash
 uv run python scripts/make_sample_corpus.py data/sample.jsonl --docs 5000
@@ -58,8 +52,7 @@ See `tests/test_tokenize.py` for the exact cases this is checked against.
 
 ## Eager vs. lazy (M4)
 
-Measured with `scripts/compare_eager_lazy.py` on the 5000-document sample
-corpus (`scripts/make_sample_corpus.py --docs 5000`):
+Measured with scripts/compare_eager_lazy.py on a real 2595-document corpus (Alice's Adventures in Wonderland):
 
 | version           | documents | peak memory | elapsed  |
 |:-----------------|:---------:|:-----------:|:--------:|
