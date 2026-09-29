@@ -124,7 +124,8 @@ Measured with `scripts/posting_memory_study.py` on `data/arxiv.jsonl` — same
 postings, three different representations, each saved and reloaded with pickle:
 
 ```bash
-uv run python scripts/posting_memory_study.py data/arxiv.jsonl --tmp data/posting_variant.pkl```
+uv run python scripts/posting_memory_study.py data/arxiv.jsonl --tmp data/posting_variant.pkl
+```
 
 | representation | peak memory (build) | index file size | load time |
 |---|---|---|---|
