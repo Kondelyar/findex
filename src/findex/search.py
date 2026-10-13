@@ -1,26 +1,33 @@
 import argparse
+import heapq
+import logging
 import time
 import tracemalloc
+from dataclasses import dataclass, field
+from functools import lru_cache
+from operator import itemgetter
 from pathlib import Path
 
 from findex.models import Index
-from findex.store import load_json, load_pickle
+from findex.query import Node, QueryError, parse
+from findex.scoring import BM25, Scorer, TfIdf
+from findex.snippets import fetch_texts, make_snippet
+from findex.store import open_index
+from findex.timing import timed
 from findex.tokenize import tokenize
 
 _KEYWORDS = {"AND", "OR", "NOT"}
 
 
-def parse_query(query: str) -> list[tuple[str, str]]:
-    """Turn "cats OR dogs NOT sleepy" into [(START, cats), (OR, dogs), (NOT, sleepy)].
+# ---- Lab 2: boolean engines (kept for the merge-vs-set benchmark) ----
 
-    A term with no keyword before it is treated as AND. Left-to-right,
-    no operator precedence or parentheses - that's Lab 3's job.
-    """
+
+def parse_query(query: str) -> list[tuple[str, str]]:
     steps: list[tuple[str, str]] = []
     op = "START"
     for raw in query.split():
-        if raw.upper() in _KEYWORDS:
-            op = raw.upper()
+        if raw in _KEYWORDS:
+            op = raw
             continue
         term = next(tokenize(raw), None)
         if term:
@@ -101,33 +108,90 @@ def evaluate(index: Index, query: str, engine: str = "merge") -> list[int]:
     return sorted(current) if engine == "set" else current
 
 
+# ---- Lab 3: ranked search ----
+
+
+@dataclass(order=True)
+class SearchResult:
+    doc_id: int = field(compare=False)
+    score: float
+    title: str = field(compare=False)
+
+
+class Searcher:
+    def __init__(self, index: Index):
+        self.index = index
+        self.match = lru_cache(maxsize=256)(self._match)
+
+    def _match(self, query: str) -> tuple[Node, tuple[int, ...]]:
+        node = parse(query)
+        return node, tuple(sorted(node.evaluate(self.index)))
+
+    @timed
+    def search(
+        self, query: str, scorer: Scorer | None = None, k: int = 10
+    ) -> list[SearchResult]:
+        scorer = scorer or BM25()
+        node, doc_ids = self.match(query)
+        scores = dict.fromkeys(doc_ids, 0.0)
+        for term in set(node.positive_terms()):
+            for posting in self.index.get(term, ()):
+                if posting.doc_id in scores:
+                    scores[posting.doc_id] += scorer(term, posting, self.index)
+
+        top = heapq.nlargest(k, scores.items(), key=itemgetter(1))
+        return [
+            SearchResult(doc_id, score, self.index.doc_meta[doc_id].preview)
+            for doc_id, score in top
+        ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="search the saved inverted index")
     parser.add_argument("index_path", type=Path)
     parser.add_argument("query")
-    parser.add_argument("--engine", choices=["merge", "set"], default="merge")
+    parser.add_argument("--scorer", choices=["bm25", "tfidf"], default="bm25")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--repeat", type=int, default=1, help="run the query N times")
+    parser.add_argument("-v", "--verbose", action="store_true", help="show timing log")
     args = parser.parse_args()
 
-    load = load_json if args.index_path.suffix == ".json" else load_pickle
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING, format="%(message)s"
+    )
+    scorer = BM25() if args.scorer == "bm25" else TfIdf()
 
     tracemalloc.start()
     start = time.perf_counter()
-    index = load(args.index_path)
-    doc_ids = evaluate(index, args.query, engine=args.engine)
-    elapsed = time.perf_counter() - start
-    _, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
+    with open_index(args.index_path) as index:
+        searcher = Searcher(index)
+        try:
+            for _ in range(args.repeat):
+                results = searcher.search(args.query, scorer=scorer, k=args.limit)
+        except QueryError as e:
+            raise SystemExit(f"bad query: {e}") from e
+        elapsed = time.perf_counter() - start
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
 
-    print(f"query:   {args.query}")
-    print(f"engine:  {args.engine}")
-    print(f"matches: {len(doc_ids)}")
-    print(f"elapsed: {elapsed:.3f}s")
-    print(f"peak mem:{peak / 1024 / 1024:.2f} MB")
-    print()
-    for doc_id in doc_ids[: args.limit]:
-        meta = index.doc_meta[doc_id]
-        print(f"  [{doc_id}] {meta.doc_id}  {meta.preview}")
+        node, doc_ids = searcher.match(args.query)
+        terms = set(node.positive_terms())
+        texts = fetch_texts(index, [r.doc_id for r in results])
+
+        print(f"query:    {args.query}")
+        print(f"scorer:   {scorer}")
+        print(f"matches:  {len(doc_ids)}")
+        print(f"elapsed:  {elapsed:.3f}s")
+        print(f"peak mem: {peak / 1024 / 1024:.2f} MB")
+        if args.verbose:
+            print(f"cache:    {searcher.match.cache_info()}")
+        print()
+        for result in results:
+            meta = index.doc_meta[result.doc_id]
+            text = texts.get(result.doc_id)
+            snippet = make_snippet(text, terms) if text else result.title
+            print(f"[{meta.doc_id}] {result.score:.3f}")
+            print(f"    {snippet}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+[
+  {"query": "white rabbit", "relevant": ["doc_2201", "doc_228", "doc_234", "doc_508", "doc_1980"]},
+  {"query": "cheshire cat", "relevant": ["doc_982", "doc_1474", "doc_1498", "doc_1069", "doc_1528"]},
+  {"query": "queen OR croquet", "relevant": ["doc_1423", "doc_928", "doc_1031", "doc_1339", "doc_25"]},
+  {"query": "hatter OR dormouse", "relevant": ["doc_1285", "doc_2063", "doc_1197", "doc_1133", "doc_2106"]},
+  {"query": "caterpillar", "relevant": ["doc_716", "doc_744", "doc_752", "doc_732", "doc_22"]},
+  {"query": "\"tea party\"", "relevant": ["doc_24", "doc_1327"]},
+  {"query": "\"mock turtle\"", "relevant": ["doc_1702", "doc_1642", "doc_1700", "doc_1707", "doc_1857"]},
+  {"query": "pool OR tears", "relevant": ["doc_19", "doc_224", "doc_301", "doc_1674", "doc_2290"]},
+  {"query": "golden key", "relevant": ["doc_116", "doc_122", "doc_169", "doc_1333"]},
+  {"query": "(alice OR queen) NOT rabbit", "relevant": ["doc_1367", "doc_1628", "doc_1402", "doc_1427", "doc_1365"]}
+]

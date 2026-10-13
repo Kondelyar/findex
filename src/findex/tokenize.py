@@ -6,7 +6,7 @@ from collections.abc import Iterator
 # Latin count too), with an optional apostrophe in the middle for cases like
 # "don't" or "п'ять". Digits break a token. A hyphen breaks a token, so
 # "well-known" becomes two tokens: "well", "known".
-_WORD_RE = re.compile(r"[^\W\d_]+(?:['\u2019][^\W\d_]+)?")
+WORD_RE = re.compile(r"[^\W\d_]+(?:['\u2019][^\W\d_]+)?")
 
 
 def tokenize(text: str) -> Iterator[str]:
@@ -19,5 +19,5 @@ def tokenize(text: str) -> Iterator[str]:
     """
     normalized = unicodedata.normalize("NFC", text)
     folded = normalized.casefold()
-    for match in _WORD_RE.finditer(folded):
+    for match in WORD_RE.finditer(folded):
         yield match.group()

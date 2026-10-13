@@ -23,16 +23,16 @@ def test_pickle_roundtrip(tmp_path):
     out = tmp_path / "index.pkl"
     save_pickle(index, out)
     loaded = load_pickle(out)
-    assert loaded.postings.keys() == index.postings.keys()
+    assert loaded.postings == index.postings
     assert loaded.doc_meta == index.doc_meta
     assert loaded.doc_lengths == index.doc_lengths
 
 
-def test_json_roundtrip(tmp_path):
-    index = build_index(make_corpus(tmp_path))
+def test_json_roundtrip_keeps_positions(tmp_path):
+    index = build_index(make_corpus(tmp_path), positions=True)
     out = tmp_path / "index.json"
     save_json(index, out)
     loaded = load_json(out)
-    assert loaded.postings.keys() == index.postings.keys()
+    assert loaded.postings == index.postings
     assert loaded.doc_meta == index.doc_meta
     assert loaded.doc_lengths == index.doc_lengths
