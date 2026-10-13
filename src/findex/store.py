@@ -1,9 +1,12 @@
 import json
 import pickle
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 
 from findex.models import DocMeta, Index, Posting
+from findex.timing import timed
 
 
 def save_pickle(index: Index, path: Path) -> None:
@@ -11,6 +14,7 @@ def save_pickle(index: Index, path: Path) -> None:
         pickle.dump(index, f)
 
 
+@timed
 def load_pickle(path: Path) -> Index:
     # pickle.load runs arbitrary code embedded in the file, so this is only
     # safe to call on a file findex itself produced. Never load a pickle
@@ -31,13 +35,26 @@ def save_json(index: Index, path: Path) -> None:
         json.dump(data, f, ensure_ascii=False)
 
 
+@timed
 def load_json(path: Path) -> Index:
     with path.open(encoding="utf-8") as f:
         data = json.load(f)
 
     postings = {
-        term: [Posting(**p) for p in plist] for term, plist in data["postings"].items()
+        term: [Posting(p["doc_id"], p["tf"], tuple(p["positions"])) for p in plist]
+        for term, plist in data["postings"].items()
     }
     doc_lengths = {int(k): v for k, v in data["doc_lengths"].items()}
     doc_meta = {int(k): DocMeta(**v) for k, v in data["doc_meta"].items()}
     return Index(postings=postings, doc_lengths=doc_lengths, doc_meta=doc_meta)
+
+
+@contextmanager
+def open_index(path: Path) -> Iterator[Index]:
+    path = Path(path)
+    load = load_json if path.suffix == ".json" else load_pickle
+    index = load(path)
+    try:
+        yield index
+    finally:
+        index.close()

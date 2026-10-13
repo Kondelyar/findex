@@ -79,18 +79,14 @@ Builds `postings: dict[str, list[Posting]]`, `doc_lengths` and `doc_meta` in one
 streaming pass over the Lab 1 pipeline, and saves the result. Prints document
 count, term count, elapsed time and peak memory.
 
-### Search
+### Boolean engines
 
-```bash
-uv run python -m findex.search data/index.pkl "cat AND mouse"
-uv run python -m findex.search data/index.pkl "cat OR mouse NOT hat" --engine set --limit 5
-```
-
-Query language: terms separated by spaces are implicit `AND`; `AND`, `OR`, `NOT`
-can be written explicitly, evaluated strictly left to right (no precedence, no
-parentheses — that needs a real parser, which is Lab 3). `--engine merge` (default)
-walks the sorted postings lists with two pointers; `--engine set` uses Python's
-built-in set operations on the same doc_ids, for comparison.
+`search.py` still contains the Lab 2 engines: `evaluate(index, query, engine="merge" | "set")`.
+Terms separated by spaces are implicit `AND`; `AND`, `OR`, `NOT` (uppercase only, so
+a lowercase `and` is an ordinary word) are evaluated strictly left to right.
+`merge` walks the sorted postings lists with two pointers; `set` uses Python's
+built-in set operations on the same doc_ids. The command line now uses the Lab 3
+ranked search (below).
 
 ### merge vs. set benchmark (M2)
 
@@ -133,6 +129,164 @@ uv run python scripts/posting_memory_study.py data/arxiv.jsonl --tmp data/postin
 | list[Posting], slots=True | 2.16 MB | 633.1 KB | 20.54 ms |
 | array('I') pairs | 1.28 MB | 346.7 KB | 12.15 ms |
 
+## Lab 3 — ranking and the object model
+
+### Index as an object
+
+`Index` (in `models.py`) subclasses `collections.abc.Mapping`, so it speaks the
+container protocol: `len(index)` is the number of terms, `"alice" in index`,
+`index["alice"]` (postings, `KeyError` if absent), `for term in index`, and a
+readable `repr`. It also exposes `num_docs`, `avg_doc_length` (a `cached_property`,
+computed once), `doc_length(doc_id)` and `df(term)`. `open_index(path)` in
+`store.py` is a context manager that loads the index and calls `index.close()`
+on exit, also when the body raises.
+
+Phrase queries need token positions, so the index has to be built with a flag
+(it makes the index bigger):
+
+```bash
+uv run python -m findex.index data/arxiv.jsonl --out data/index.pkl --positions
+```
+
+Indexes built before Lab 3 have no `positions` field and must be rebuilt.
+
+### Query language
+
+```
+or_expr  := and_expr ('OR' and_expr)*
+and_expr := not_expr (['AND'] not_expr)*      # a missing AND is implicit
+not_expr := 'NOT' not_expr | atom
+atom     := term | "quoted phrase" | '(' or_expr ')'
+```
+
+`query.py` is a small recursive-descent parser that builds a tree of frozen
+dataclasses (`Term`, `Phrase`, `And`, `Or`, `Not`). The nodes overload `&`, `|`
+and `~`, and each has `evaluate(index) -> set[int]`, so
+`parse('a OR b c') == Or(Term('a'), And(Term('b'), Term('c')))` — `AND` binds
+tighter than `OR`. Phrases are matched through positions: a phrase matches a
+document if some start position `p` has the next word at `p + 1`, and so on.
+
+### Ranking
+
+`scoring.py` defines a `Scorer` protocol, `score(term, posting, index) -> float`,
+with two implementations that can be swapped freely:
+
+- `TfIdf`: `(1 + ln tf) * ln(N / df)`
+- `BM25(k1=1.5, b=0.75)`: `idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * len / avg_len))`,
+  with `idf = ln(1 + (N - df + 0.5) / (df + 0.5))`
+
+`Searcher.search(query, scorer=BM25(), k=10)` evaluates the query tree to get the
+matching documents, adds up the scorer's weight for every positive term (terms
+under `NOT` don't score), and takes the top `k` with `heapq.nlargest`.
+
+```bash
+uv run python -m findex.search data/index.pkl "white rabbit"
+uv run python -m findex.search data/index.pkl "(alice OR queen) NOT rabbit" --scorer tfidf
+uv run python -m findex.search data/index.pkl "\"tea party\"" --limit 5
+```
+
+### Ranking sanity checks (M2)
+
+```bash
+uv run python scripts/ranking_sanity.py data/index.pkl
+```
+
+```
+1. rare vs common term, same document (doc 1676, tf=1)
+   tfidf  'title' (df=1) = 7.861
+   tfidf  'the' (df=1372) = 0.637
+   bm25   'title' (df=1) = 7.261
+   bm25   'the' (df=1372) = 0.621
+
+2. repeating 'the' in doc 1676
+   tf=1   tfidf=0.637  bm25=0.621
+   tf=2   tfidf=1.079  bm25=0.893
+   tf=5   tfidf=1.663  bm25=1.213
+   tf=10  tfidf=2.105  bm25=1.377
+   tf=20  tfidf=2.547  bm25=1.478
+   tf=21  tfidf=2.578  bm25=1.483
+
+3. one match of 'the': shortest vs longest document
+   tfidf  doc 153 (0 tokens) = 0.637  |  doc 1535 (18 tokens) = 0.637
+   bm25   doc 153 (0 tokens) = 1.159  |  doc 1535 (18 tokens) = 0.504
+```
+
+
+### Timing and caching (M4)
+
+`@timed` (in `timing.py`, uses `functools.wraps`) logs elapsed milliseconds for
+`build_index`, `load_pickle` / `load_json` and `Searcher.search`. The query →
+matching doc_ids path is wrapped in `functools.lru_cache(maxsize=256)`. The cache is
+created per `Searcher` instance (the `Index` is a mutable mapping and not hashable, so
+it cannot be part of a cache key) and stores a tuple, not a set, so callers can't
+change a cached result.
+
+```bash
+uv run python -m findex.search data/index.pkl "white rabbit" --repeat 2 -v
+```
+
+```
+load_pickle took 136.15 ms
+search took 0.56 ms
+search took 0.37 ms
+query:    white rabbit
+scorer:   BM25(k1=1.5, b=0.75)
+matches:  22
+elapsed:  0.138s
+peak mem: 10.04 MB
+cache:    CacheInfo(hits=2, misses=1, maxsize=256, currsize=1)
+```
+
+### Snippets
+
+For every result the CLI re-reads the document text from the corpus file stored
+in `DocMeta.path`, finds the window of ±80 characters with the most matched
+words, and highlights them with `**`. It needs the corpus file at the path it
+was indexed from.
+
+```
+query:    white rabbit
+scorer:   BM25(k1=1.5, b=0.75)
+matches:  22
+elapsed:  0.145s
+peak mem: 10.04 MB
+
+[doc_2201] 9.706
+    These were the verses the **White** **Rabbit** read:—
+[doc_228] 8.534
+    **Rabbit** returning, splendidly dressed, with a pair of **white** kid gloves
+[doc_234] 8.534
+    sir—” The **Rabbit** started violently, dropped the **white** kid gloves and
+[doc_508] 8.534
+    It was the **White** **Rabbit**, trotting slowly back again, and looking
+[doc_1980] 8.534
+    stopped hastily, for the **White** **Rabbit** cried out, “Silence in the
+```
+
+### precision@5 (M4)
+
+Ten queries in `eval/queries.json`, with hand-labelled relevant document ids
+(`doc_N` from `data/arxiv.jsonl`). `--show` prints the top 5 results to help with labelling.
+
+```bash
+uv run python scripts/precision_at_5.py data/index.pkl eval/queries.json --show
+uv run python scripts/precision_at_5.py data/index.pkl eval/queries.json
+```
+
+| query | TF-IDF P@5 | BM25 P@5 |
+|---|---|---|
+| white rabbit | 0.6 | 1.0 |
+| cheshire cat | 1.0 | 1.0 |
+| queen OR croquet | 0.8 | 1.0 |
+| hatter OR dormouse | 0.8 | 1.0 |
+| caterpillar | 0.4 | 1.0 |
+| "tea party" | 0.4 | 0.4 |
+| "mock turtle" | 0.2 | 1.0 |
+| pool OR tears | 0.6 | 1.0 |
+| golden key | 0.8 | 0.8 |
+| (alice OR queen) NOT rabbit | 1.0 | 1.0 |
+| **mean** | 0.66 | 0.92 |
+
 ## Project layout
 
 ```
@@ -140,18 +294,30 @@ src/findex/
   corpus.py     iter_documents(root) -> Iterator[Document]        (Lab 1)
   tokenize.py   tokenize(text) -> Iterator[str]                   (Lab 1)
   stats.py      corpus statistics pipeline, python -m findex.stats (Lab 1)
-  models.py     Posting, DocMeta, Index dataclasses                (Lab 2)
-  index.py      build_index(root) -> Index, python -m findex.index (Lab 2)
-  search.py     evaluate(index, query) -> doc_ids, python -m findex.search (Lab 2)
-  store.py      save/load the index as pickle or json               (Lab 2)
+  models.py     Posting, DocMeta, Index (a Mapping)                (Lab 2, 3)
+  index.py      build_index(root) -> Index, python -m findex.index (Lab 2, 3)
+  store.py      save/load as pickle or json, open_index            (Lab 2, 3)
+  search.py     boolean engines (Lab 2), Searcher + CLI            (Lab 3)
+  scoring.py    Scorer protocol, TfIdf, BM25                       (Lab 3)
+  query.py      query tree and recursive-descent parser            (Lab 3)
+  snippets.py   fetch_texts, make_snippet                          (Lab 3)
+  timing.py     @timed decorator                                   (Lab 3)
 scripts/
   make_sample_corpus.py    synthetic test corpus generator
   compare_eager_lazy.py    Lab 1 M4 measurement script
   compare_engines.py       Lab 2 M2 merge-vs-set benchmark
   posting_memory_study.py  Lab 2 M4 measurement script
+  ranking_sanity.py        Lab 3 M2 three sanity checks
+  precision_at_5.py        Lab 3 M4 evaluation
+eval/
+  queries.json             Lab 3 hand-labelled queries
 tests/
   test_tokenize.py   Lab 1
   test_index.py      Lab 2
   test_search.py     Lab 2
-  test_store.py       Lab 2
+  test_store.py      Lab 2
+  test_model.py      Lab 3 (Index protocol, open_index)
+  test_scoring.py    Lab 3
+  test_query.py      Lab 3 (parser trees, phrases)
+  test_ranking.py    Lab 3 (Searcher, cache, snippets)
 ```
