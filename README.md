@@ -1,3 +1,5 @@
+[![CI](https://github.com/Kondelyar/findex/actions/workflows/ci.yml/badge.svg)](https://github.com/Kondelyar/findex/actions/workflows/ci.yml)
+
 # findex
 
 Full-text search engine, built incrementally over the Python course labs.
