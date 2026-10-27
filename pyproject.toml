@@ -1,10 +1,16 @@
 [project]
 name = "findex"
-version = "0.1.0"
-description = "Search engine over an arXiv abstracts corpus"
+version = "0.4.0"
+description = "Full-text search engine: inverted index, BM25 ranking, query language, CLI"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "typer>=0.16",
+    "rich>=13",
+]
+
+[project.scripts]
+findex = "findex.cli:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -12,12 +18,21 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.100",
+    "pyright>=1.1.400",
     "pytest>=8.0",
+    "pytest-cov>=5.0",
     "ruff>=0.6",
 ]
 
 [tool.ruff]
 line-length = 100
 
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: tests that take more than a second (deselect with -m 'not slow')"]

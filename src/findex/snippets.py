@@ -1,12 +1,15 @@
+import logging
 from pathlib import Path
 
 from findex.corpus import iter_documents
 from findex.models import Index
 from findex.tokenize import WORD_RE, tokenize
 
+log = logging.getLogger(__name__)
+
 
 def fetch_texts(index: Index, doc_ids: list[int]) -> dict[int, str]:
-    wanted = {}
+    wanted: dict[tuple[str, str], int] = {}
     for doc_id in doc_ids:
         meta = index.doc_meta[doc_id]
         wanted[(meta.path, meta.doc_id)] = doc_id
@@ -14,6 +17,7 @@ def fetch_texts(index: Index, doc_ids: list[int]) -> dict[int, str]:
     texts: dict[int, str] = {}
     for path in {path for path, _ in wanted}:
         if not Path(path).exists():
+            log.warning("corpus file %s not found, no snippets for it", path)
             continue
         for doc in iter_documents(Path(path)):
             key = (path, doc.doc_id)
@@ -39,7 +43,7 @@ def make_snippet(text: str, terms: set[str], width: int = 80) -> str:
         end = text.find(" ", end)
         end = len(text) if end == -1 else end
 
-    parts = []
+    parts: list[str] = []
     pos = start
     for m in hits:
         if m.start() >= start and m.end() <= end:

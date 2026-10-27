@@ -287,37 +287,94 @@ uv run python scripts/precision_at_5.py data/index.pkl eval/queries.json
 | (alice OR queen) NOT rabbit | 1.0 | 1.0 |
 | **mean** | 0.66 | 0.92 |
 
-## Project layout
+## Lab 4 — a real tool
+
+### Install
+
+```bash
+uv sync                  # development environment
+uv tool install .        # puts `findex` on your PATH
+uv build                 # dist/findex-0.4.0-py3-none-any.whl + sdist
+```
+
+From a release (no clone needed):
+
+```bash
+uv tool install https://github.com/Kondelyar/findex/releases/download/v0.4.0/findex-0.4.0-py3-none-any.whl
+findex --help
+```
+
+### Usage
+
+```bash
+findex index data/arxiv.jsonl --out data/index.pkl --positions   # progress bar on stderr
+findex index data/arxiv.jsonl --out data/index.json --limit 500  # json format, first 500 docs
+findex search data/index.pkl "white rabbit" --k 5                # ranked table with snippets
+findex search data/index.pkl "(alice OR queen) NOT rabbit" --scorer tfidf
+findex search data/index.pkl '"tea party"' --json | jq .id       # JSON lines on stdout
+findex stats data/index.pkl --top 20
+findex -vv search data/index.pkl "rabbit"                        # logs on stderr
+```
+
+Data (the table, the JSON lines) goes to stdout and everything diagnostic (logs, the
+progress bar, error messages) goes to stderr, so `--json` output can be piped safely.
+An expected error (missing file, bad query, phrase query on an index built without
+`--positions`) prints one `error: ...` line and exits with code 1, never a traceback.
+`-v` sets the log level to INFO and `-vv` to DEBUG; logging is configured only in
+`cli.py`, every other module just does `log = logging.getLogger(__name__)`.
+
+### Typing
+
+`pyright` runs in strict mode over `src/` (configured in `pyproject.toml`).
+`Scorer` is a `typing.Protocol`, the `@timed` decorator is generic over its signature
+with PEP 695 syntax (`def timed[**P, R](fn: Callable[P, R]) -> Callable[P, R]`),
+`evaluate` takes `Literal["merge", "set"]`, and `Node` is an abstract base class so the
+checker knows every query node has `evaluate` and `positive_terms`. There is no
+`# type: ignore` anywhere.
+
+```bash
+uv run pyright
+```
 
 ```
-src/findex/
-  corpus.py     iter_documents(root) -> Iterator[Document]        (Lab 1)
-  tokenize.py   tokenize(text) -> Iterator[str]                   (Lab 1)
-  stats.py      corpus statistics pipeline, python -m findex.stats (Lab 1)
-  models.py     Posting, DocMeta, Index (a Mapping)                (Lab 2, 3)
-  index.py      build_index(root) -> Index, python -m findex.index (Lab 2, 3)
-  store.py      save/load as pickle or json, open_index            (Lab 2, 3)
-  search.py     boolean engines (Lab 2), Searcher + CLI            (Lab 3)
-  scoring.py    Scorer protocol, TfIdf, BM25                       (Lab 3)
-  query.py      query tree and recursive-descent parser            (Lab 3)
-  snippets.py   fetch_texts, make_snippet                          (Lab 3)
-  timing.py     @timed decorator                                   (Lab 3)
-scripts/
-  make_sample_corpus.py    synthetic test corpus generator
-  compare_eager_lazy.py    Lab 1 M4 measurement script
-  compare_engines.py       Lab 2 M2 merge-vs-set benchmark
-  posting_memory_study.py  Lab 2 M4 measurement script
-  ranking_sanity.py        Lab 3 M2 three sanity checks
-  precision_at_5.py        Lab 3 M4 evaluation
-eval/
-  queries.json             Lab 3 hand-labelled queries
-tests/
-  test_tokenize.py   Lab 1
-  test_index.py      Lab 2
-  test_search.py     Lab 2
-  test_store.py      Lab 2
-  test_model.py      Lab 3 (Index protocol, open_index)
-  test_scoring.py    Lab 3
-  test_query.py      Lab 3 (parser trees, phrases)
-  test_ranking.py    Lab 3 (Searcher, cache, snippets)
+0 errors, 0 warnings, 0 informations
 ```
+
+### Tests
+
+```bash
+uv run pytest                      # everything
+uv run pytest -m "not slow"        # skip the end-to-end test on a 4000-document corpus
+uv run pytest --cov=findex --cov-report=term-missing
+```
+
+```
+ 116 passed in 5.98s 
+```
+
+Hypothesis properties (`tests/test_properties.py`):
+
+| property | what it checks |
+|---|---|
+| tokens are never empty, tokenizing is idempotent | `tokenize(" ".join(tokenize(t))) == tokenize(t)` for any Unicode text |
+| merge agrees with sets | `merge_and/or/not` equal the set operations on any two sorted id lists |
+| postings are sorted | for any list of documents, every postings list is ordered by doc_id |
+| save/load round trip | pickle and json both give back the same postings, lengths and metadata |
+| parser inverts renderer | `parse(render(tree)) == tree` for randomly generated query trees |
+
+Coverage: **99%**. The lines that are not covered are the `main()` of
+`stats.py` (the old Lab 1 argparse entry point, replaced by `findex stats`; its `run()`
+is tested) and the `case _` branch of `render()`, a defensive error for node types
+that don't exist.
+
+### CI and release
+
+`.github/workflows/ci.yml` runs `ruff check`, `ruff format --check`, `pyright` and
+`pytest --cov` on every push and pull request (the badge at the top shows the result).
+
+```bash
+git tag v0.4.0 && git push --tags
+gh release create v0.4.0 dist/findex-0.4.0-py3-none-any.whl --title v0.4.0 --notes "Lab 4: typed, tested, packaged CLI"
+```
+
+Release: https://github.com/Kondelyar/findex/releases/tag/v0.4.0

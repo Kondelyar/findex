@@ -57,3 +57,12 @@ def test_open_index_closes_on_error(index, tmp_path):
     with pytest.raises(RuntimeError), open_index(out) as ix:
         raise RuntimeError("boom")
     assert len(ix) == 0
+
+
+def test_total_tokens(index):
+    assert index.total_tokens == 7
+
+
+def test_top_terms(index):
+    assert index.top_terms(1) == [("apple", 2)]
+    assert len(index.top_terms(100)) == 6

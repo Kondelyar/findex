@@ -1,6 +1,8 @@
-from collections.abc import Mapping
+import heapq
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
+from operator import itemgetter
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +39,7 @@ class Index(Mapping[str, list[Posting]]):
     def __getitem__(self, term: str) -> list[Posting]:
         return self.postings[term]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self.postings)
 
     def __repr__(self) -> str:
@@ -46,6 +48,10 @@ class Index(Mapping[str, list[Posting]]):
     @property
     def num_docs(self) -> int:
         return len(self.doc_lengths)
+
+    @property
+    def total_tokens(self) -> int:
+        return sum(self.doc_lengths.values())
 
     @cached_property
     def avg_doc_length(self) -> float:
@@ -61,6 +67,10 @@ class Index(Mapping[str, list[Posting]]):
 
     def df(self, term: str) -> int:
         return len(self.postings.get(term, ()))
+
+    def top_terms(self, n: int = 50) -> list[tuple[str, int]]:
+        totals = ((term, sum(p.tf for p in plist)) for term, plist in self.postings.items())
+        return heapq.nlargest(n, totals, key=itemgetter(1))
 
     def close(self) -> None:
         self.postings.clear()

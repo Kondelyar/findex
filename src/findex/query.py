@@ -1,4 +1,5 @@
 import re
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from findex.models import Index
@@ -9,7 +10,13 @@ class QueryError(ValueError):
     pass
 
 
-class Node:
+class Node(ABC):
+    @abstractmethod
+    def evaluate(self, index: Index) -> set[int]: ...
+
+    @abstractmethod
+    def positive_terms(self) -> list[str]: ...
+
     def __and__(self, other: "Node") -> "And":
         return And(self, other)
 
@@ -39,7 +46,7 @@ class Phrase(Node):
         if not index.has_positions:
             raise QueryError("phrase queries need an index built with --positions")
         by_doc = [{p.doc_id: p.positions for p in index.get(t, ())} for t in self.terms]
-        candidates = set.intersection(*(set(d) for d in by_doc))
+        candidates = set(by_doc[0]).intersection(*by_doc[1:])
         return {doc for doc in candidates if _is_phrase([d[doc] for d in by_doc])}
 
     def positive_terms(self) -> list[str]:
@@ -88,12 +95,30 @@ class Not(Node):
         return []
 
 
+def render(node: Node) -> str:
+    match node:
+        case Term(text):
+            return text
+        case Phrase(terms):
+            return '"' + " ".join(terms) + '"'
+        case And(left, right):
+            return f"({render(left)} AND {render(right)})"
+        case Or(left, right):
+            return f"({render(left)} OR {render(right)})"
+        case Not(child):
+            return f"NOT {render(child)}"
+        case _:
+            raise TypeError(f"unknown node {node!r}")
+
+
 _TOKEN_RE = re.compile(r'"[^"]*"|[()]|[^\s()"]+')
 _OPERATORS = ("(", ")", "AND", "OR", "NOT")
 
+type Token = str | Node
 
-def _lex(query: str) -> list[str | Node]:
-    tokens: list[str | Node] = []
+
+def _lex(query: str) -> list[Token]:
+    tokens: list[Token] = []
     for raw in _TOKEN_RE.findall(query):
         if raw in _OPERATORS:
             tokens.append(raw)
@@ -111,14 +136,14 @@ def _lex(query: str) -> list[str | Node]:
 
 
 class _Parser:
-    def __init__(self, tokens: list[str | Node]):
+    def __init__(self, tokens: list[Token]):
         self.tokens = tokens
         self.pos = 0
 
-    def peek(self):
+    def peek(self) -> Token | None:
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
 
-    def take(self):
+    def take(self) -> Token | None:
         tok = self.peek()
         self.pos += 1
         return tok

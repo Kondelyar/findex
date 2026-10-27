@@ -81,3 +81,11 @@ def test_phrase_without_positions_raises(tmp_path):
     path.write_text(json.dumps({"id": "d", "abstract": "lazy dog"}), encoding="utf-8")
     with pytest.raises(QueryError):
         parse('"lazy dog"').evaluate(build_index(path))
+
+
+def test_hyphenated_word_becomes_a_phrase():
+    assert parse("well-known") == Phrase(("well", "known"))
+
+
+def test_punctuation_only_words_are_dropped():
+    assert parse("a ... b") == And(Term("a"), Term("b"))

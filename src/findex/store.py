@@ -1,12 +1,16 @@
 import json
+import logging
 import pickle
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from findex.models import DocMeta, Index, Posting
 from findex.timing import timed
+
+log = logging.getLogger(__name__)
 
 
 def save_pickle(index: Index, path: Path) -> None:
@@ -20,14 +24,13 @@ def load_pickle(path: Path) -> Index:
     # safe to call on a file findex itself produced. Never load a pickle
     # you downloaded from somewhere else.
     with path.open("rb") as f:
-        return pickle.load(f)
+        index: Index = pickle.load(f)
+    return index
 
 
 def save_json(index: Index, path: Path) -> None:
     data = {
-        "postings": {
-            term: [asdict(p) for p in plist] for term, plist in index.postings.items()
-        },
+        "postings": {term: [asdict(p) for p in plist] for term, plist in index.postings.items()},
         "doc_lengths": index.doc_lengths,
         "doc_meta": {str(doc_id): asdict(meta) for doc_id, meta in index.doc_meta.items()},
     }
@@ -38,7 +41,7 @@ def save_json(index: Index, path: Path) -> None:
 @timed
 def load_json(path: Path) -> Index:
     with path.open(encoding="utf-8") as f:
-        data = json.load(f)
+        data: dict[str, Any] = json.load(f)
 
     postings = {
         term: [Posting(p["doc_id"], p["tf"], tuple(p["positions"])) for p in plist]
@@ -49,11 +52,18 @@ def load_json(path: Path) -> Index:
     return Index(postings=postings, doc_lengths=doc_lengths, doc_meta=doc_meta)
 
 
+def save_index(index: Index, path: Path) -> None:
+    save = save_json if path.suffix == ".json" else save_pickle
+    save(index, path)
+    log.info("saved %r to %s", index, path)
+
+
 @contextmanager
-def open_index(path: Path) -> Iterator[Index]:
+def open_index(path: Path) -> Generator[Index]:
     path = Path(path)
     load = load_json if path.suffix == ".json" else load_pickle
     index = load(path)
+    log.info("loaded %r from %s", index, path)
     try:
         yield index
     finally:

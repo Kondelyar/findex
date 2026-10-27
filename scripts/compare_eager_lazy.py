@@ -54,15 +54,16 @@ def main() -> None:
     args = parser.parse_args()
 
     print(f"| {'version':<17} | {'documents':<9} | {'peak memory':<11} | {'elapsed':<8} |")
-    print(f"|:{'-'*17}|:{'-'*9}:|:{'-'*11}:|:{'-'*8}:|")
+    print(f"|:{'-' * 17}|:{'-' * 9}:|:{'-' * 11}:|:{'-' * 8}:|")
 
     for name, fn in (("eager (lists)", eager), ("lazy (generators)", lazy)):
         docs, _tokens, elapsed, peak = measure(fn, args.root, args.limit)
         mem_mb = f"{peak / 1024 / 1024:.2f} MB"
         time_sec = f"{elapsed:.3f}s"
-        
+
         # Виводимо рядки з жорстким вирівнюванням по ширині
-        print(f"| {name:<17} | {str(docs):<9} | {mem_mb:<11} | {time_sec:<8} |")
+        print(f"| {name:<17} | {docs!s:<9} | {mem_mb:<11} | {time_sec:<8} |")
+
 
 if __name__ == "__main__":
     main()

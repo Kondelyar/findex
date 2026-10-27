@@ -55,3 +55,10 @@ def test_snippet_highlights_matches():
 
 def test_snippet_without_hits_returns_start_of_text():
     assert make_snippet("hello world", {"missing"}) == "hello world"
+
+
+def test_not_terms_do_not_score(searcher):
+    results = searcher.search("quick NOT fox")
+    assert [r.doc_id for r in results] == [2]
+    plain = {r.doc_id: r.score for r in searcher.search("quick")}
+    assert results[0].score == plain[2]

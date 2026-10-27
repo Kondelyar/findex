@@ -13,10 +13,27 @@ import random
 from pathlib import Path
 
 WORDS = [
-    "graph", "neural", "network", "attention", "transformer", "optimization",
-    "gradient", "convex", "sparse", "embedding", "kernel", "manifold",
-    "Bayesian", "inference", "dataset", "algorithm", "convergence",
-    "regularization", "sampling", "entropy", "distribution",
+    "graph",
+    "neural",
+    "network",
+    "attention",
+    "transformer",
+    "optimization",
+    "gradient",
+    "convex",
+    "sparse",
+    "embedding",
+    "kernel",
+    "manifold",
+    "Bayesian",
+    "inference",
+    "dataset",
+    "algorithm",
+    "convergence",
+    "regularization",
+    "sampling",
+    "entropy",
+    "distribution",
 ]
 
 
