@@ -317,6 +317,18 @@ findex search data/index.pkl '"tea party"' --json | jq .id       # JSON lines on
 findex stats data/index.pkl --top 20
 findex -vv search data/index.pkl "rabbit"                        # logs on stderr
 ```
+```text
+┏━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ # ┃ id       ┃ score ┃ snippet                                       ┃
+┡━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 1 │ doc_18   │ 5.048 │ CHAPTER I. Down the Rabbit-Hole               │
+│ 2 │ doc_49   │ 5.048 │ large rabbit-hole under the hedge.            │
+│ 3 │ doc_507  │ 4.806 │ The Rabbit Sends in a Little Bill             │
+│ 4 │ doc_2201 │ 4.586 │ These were the verses the White Rabbit read:— │
+│ 5 │ doc_21   │ 4.385 │ CHAPTER IV. The Rabbit Sends in a Little Bill │
+└───┴──────────┴───────┴───────────────────────────────────────────────┘
+                         48 matches, showing 5  
+```
 
 Data (the table, the JSON lines) goes to stdout and everything diagnostic (logs, the
 progress bar, error messages) goes to stderr, so `--json` output can be piped safely.
