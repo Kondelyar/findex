@@ -39,7 +39,7 @@ def test_directory_is_read_in_sorted_order(tmp_path: Path) -> None:
 
 def test_missing_id_falls_back_to_file_and_offset(tmp_path: Path) -> None:
     path = tmp_path / "noid.jsonl"
-    path.write_text('{"abstract": "first"}\n{"abstract": "second"}', encoding="utf-8", newline='\n')
+    path.write_text('{"abstract": "first"}\n{"abstract": "second"}', encoding="utf-8", newline="\n")
     ids = [d.doc_id for d in iter_documents(path)]
     assert ids == ["noid.jsonl@0", "noid.jsonl@22"]
 
