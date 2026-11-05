@@ -1,4 +1,6 @@
 import json
+import multiprocessing
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -26,3 +28,11 @@ def corpus_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.fixture
 def index(corpus_path: Path) -> Index:
     return build_index(corpus_path, positions=True)
+
+
+@pytest.fixture
+def spawn() -> Iterator[None]:
+    previous = multiprocessing.get_start_method()
+    multiprocessing.set_start_method("spawn", force=True)
+    yield
+    multiprocessing.set_start_method(previous, force=True)

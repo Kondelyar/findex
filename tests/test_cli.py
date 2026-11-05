@@ -136,6 +136,47 @@ def test_quiet_by_default(index_file: Path) -> None:
     assert result.stderr == ""
 
 
+def test_index_threads_gives_the_same_file_as_serial(corpus_path: Path, tmp_path: Path) -> None:
+    serial, threads = tmp_path / "serial.json", tmp_path / "threads.json"
+    args = ["index", str(corpus_path), "--positions"]
+    assert runner.invoke(app, [*args, "-o", str(serial), "--executor", "serial"]).exit_code == 0
+    result = runner.invoke(
+        app, [*args, "-o", str(threads), "--executor", "threads", "--workers", "3"]
+    )
+    assert result.exit_code == 0
+    assert serial.read_bytes() == threads.read_bytes()
+
+
+@pytest.mark.usefixtures("spawn")
+def test_index_with_processes(corpus_path: Path, tmp_path: Path) -> None:
+    out = tmp_path / "index.pkl"
+    args = ["index", str(corpus_path), "-o", str(out), "--executor", "processes", "--workers", "2"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0
+    assert "Indexed 5 documents" in result.stdout
+    assert runner.invoke(app, ["search", str(out), "rabbit", "--json"]).exit_code == 0
+
+
+def test_small_corpus_uses_serial_by_default(corpus_path: Path, tmp_path: Path) -> None:
+    out = tmp_path / "index.pkl"
+    result = runner.invoke(app, ["-v", "index", str(corpus_path), "-o", str(out)])
+    assert result.exit_code == 0
+    assert "with serial" in result.stderr
+
+
+def test_limit_cannot_be_combined_with_a_parallel_executor(corpus_path: Path) -> None:
+    args = ["index", str(corpus_path), "-o", "x.pkl", "--limit", "2", "--executor", "threads"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1
+    assert result.stderr.strip() == "error: --limit only works with --executor serial"
+
+
+def test_workers_must_be_positive(corpus_path: Path) -> None:
+    result = runner.invoke(app, ["index", str(corpus_path), "-o", "x.pkl", "--workers", "0"])
+    assert result.exit_code == 1
+    assert "--workers" in result.stderr
+
+
 @pytest.mark.slow
 def test_large_corpus_end_to_end(tmp_path: Path) -> None:
     rng = random.Random(1)

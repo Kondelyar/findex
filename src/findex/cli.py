@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 import time
 from enum import StrEnum
@@ -15,6 +16,7 @@ from rich.text import Text
 
 from findex.corpus import iter_documents
 from findex.index import build_index_from
+from findex.parallel import ExecutorKind, auto_executor, build_index_parallel
 from findex.query import QueryError
 from findex.scoring import BM25, Scorer, TfIdf
 from findex.search import Searcher
@@ -79,13 +81,29 @@ def index(
     out: Annotated[Path, typer.Option("--out", "-o", help="index file (.pkl or .json)")],
     positions: Annotated[bool, typer.Option(help="store token positions (phrase queries)")] = False,
     limit: Annotated[int | None, typer.Option(help="index only the first N documents")] = None,
+    workers: Annotated[int, typer.Option(help="number of threads or processes")] = os.cpu_count()
+    or 1,
+    executor: Annotated[
+        ExecutorKind | None,
+        typer.Option(help="default: processes for corpora over 4 MB, otherwise serial"),
+    ] = None,
 ) -> None:
     """Build an inverted index from a corpus and save it."""
     require_file(corpus, "corpus")
+    if workers < 1:
+        fail("--workers must be at least 1")
+    if limit is not None and executor not in (None, ExecutorKind.serial):
+        fail("--limit only works with --executor serial")
+
     start = time.perf_counter()
-    with Progress(console=Console(stderr=True), transient=True) as progress:
-        docs = progress.track(islice(iter_documents(corpus), limit), description="Indexing")
-        built = build_index_from(docs, positions=positions)
+    if limit is not None:
+        with Progress(console=Console(stderr=True), transient=True) as progress:
+            docs = progress.track(islice(iter_documents(corpus), limit), description="Indexing")
+            built = build_index_from(docs, positions=positions)
+    else:
+        kind = executor or auto_executor(corpus, workers)
+        with Console(stderr=True).status(f"Indexing ({kind}, {workers} workers)"):
+            built = build_index_parallel(corpus, workers, kind, positions)
     save_index(built, out)
     elapsed = time.perf_counter() - start
     console.print(

@@ -37,10 +37,19 @@ def test_directory_is_read_in_sorted_order(tmp_path: Path) -> None:
     assert [d.doc_id for d in iter_documents(tmp_path)] == ["from_a", "from_b"]
 
 
-def test_missing_id_falls_back_to_file_and_line(tmp_path: Path) -> None:
+def test_missing_id_falls_back_to_file_and_offset(tmp_path: Path) -> None:
     path = tmp_path / "noid.jsonl"
-    path.write_text(json.dumps({"abstract": "hello"}), encoding="utf-8")
-    assert next(iter_documents(path)).doc_id == "noid.jsonl:1"
+    path.write_text('{"abstract": "first"}\n{"abstract": "second"}', encoding="utf-8", newline='\n')
+    ids = [d.doc_id for d in iter_documents(path)]
+    assert ids == ["noid.jsonl@0", "noid.jsonl@22"]
+
+
+def test_documents_know_their_line_number(tmp_path: Path) -> None:
+    first = tmp_path / "a.jsonl"
+    second = tmp_path / "b.jsonl"
+    first.write_text('{"text": "x"}\n\nnot json\n{"text": "y"}\n', encoding="utf-8")
+    second.write_text('{"text": "z"}', encoding="utf-8")
+    assert [(d.text, d.line) for d in iter_documents(tmp_path)] == [("x", 0), ("y", 3), ("z", 4)]
 
 
 def test_stats_run_prints_counts(corpus_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

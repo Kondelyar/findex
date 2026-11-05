@@ -11,12 +11,19 @@ class Posting:
     tf: int
     positions: tuple[int, ...] = ()
 
+    # The default pickle path for a slotted dataclass is ~5x slower than this.
+    def __reduce__(self) -> tuple[type["Posting"], tuple[int, int, tuple[int, ...]]]:
+        return (Posting, (self.doc_id, self.tf, self.positions))
+
 
 @dataclass(frozen=True, slots=True)
 class DocMeta:
     doc_id: str
     path: str
     preview: str
+
+    def __reduce__(self) -> tuple[type["DocMeta"], tuple[str, str, str]]:
+        return (DocMeta, (self.doc_id, self.path, self.preview))
 
 
 class Index(Mapping[str, list[Posting]]):

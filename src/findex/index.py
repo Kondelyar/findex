@@ -18,7 +18,8 @@ def build_index_from(docs: Iterable[Document], positions: bool = False) -> Index
     doc_lengths: dict[int, int] = {}
     doc_meta: dict[int, DocMeta] = {}
 
-    for doc_id, doc in enumerate(docs):
+    for doc in docs:
+        doc_id = doc.line
         offsets: dict[str, list[int]] = defaultdict(list)
         for pos, token in enumerate(tokenize(doc.text)):
             offsets[token].append(pos)

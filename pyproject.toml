@@ -1,6 +1,6 @@
 [project]
 name = "findex"
-version = "0.4.0"
+version = "0.5.0"
 description = "Full-text search engine: inverted index, BM25 ranking, query language, CLI"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,6 +23,10 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.6",
+]
+bench = [
+    "matplotlib>=3.8",
+    "psutil>=5.9",
 ]
 
 [tool.ruff]
